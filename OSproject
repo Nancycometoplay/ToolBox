@@ -1,29 +1,21 @@
 //
 // Created by Nancy on 2018/12/23.
 //
-
+#include <sys/mman.h>
 #include <sys/types.h>
-#include <sys/ipc.h>
-#include <sys/sem.h>
-#include <sys/shm.h>
-#include <sys/stat.h>
-#include <stdio.h>
+#include <linux/sem.h>
+#include <fcntl.h>
 #include <unistd.h>
-#include <cstring>
+#include <stdio.h>
 #include <errno.h>
 #include <time.h>
+#include <stdlib.h>
 #define MAXSEM 5
 /*声明3个信号量id*/
 int fullid;
 int emptyid;
 int mutxid;
 
-/*有些系统没有定义该结构semun*/
-union semun {
-    int val;     //信号量的值
-    struct semid_ds *buf;
-    ushort *array;
-};
 
 int main() {
     struct sembuf P, V;
@@ -80,40 +72,39 @@ int main() {
     } else {
         //创建消费者进程
         if (fork() == 0) {
-            int i = 0;
-            *set = 0;
             while (1) {
                 //对emptyid 和 mutxid 执行P操作
-                semop(emptyid, &P, 1);
+                semop(fullid, &P, 1);
                 semop(mutxid, &P, 1);
                 if (*get == 100)
                     break;
                 *sum += array[(*get) % MAXSEM];  //?sum是什么
                 printf("The ComsumerA Get Number %d\n", array[(*get) % MAXSEM]);
                 (*get)++;
-                if (*get == 100) printf("The sum is %d \n", sum);
+                if (*get == 100) printf("The sum is %d \n", *sum);
                 //对emptyid mutxid执行V操作
                 semop(mutxid, &V, 1);
-                semop(fullid, &V, 1);
+                semop(emptyid, &V, 1);
                 sleep(1);
             }
             printf("消费者结束\n");
             exit(0);
         } else {
             //创建消费者进程B
+	  if(fork()==0){	
             while (1) {
                 //对emptyid 和 mutxid 执行P操作
-                semop(emptyid, &P, 1);
+                semop(fullid, &P, 1);
                 semop(mutxid, &P, 1);
                 if (*get == 100)
                     break;
                 *sum += array[(*get) % MAXSEM];  //?sum是什么
                 printf("The ComsumerB Get Number %d\n", array[(*get) % MAXSEM]);
                 (*get)++;
-                if (*get == 100) printf("The sum is %d \n", sum);
+                if (*get == 100) printf("The sum is %d \n", *sum);
                 //对emptyid mutxid执行V操作
                 semop(mutxid, &V, 1);
-                semop(fullid, &V, 1);
+                semop(emptyid, &V, 1);
                 sleep(1);
             }
             printf("消费者B结束\n");
@@ -121,10 +112,10 @@ int main() {
         }
     }
 }
-
-
-
-
-
 }
+
+
+
+
+
 
