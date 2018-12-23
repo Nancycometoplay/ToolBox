@@ -1,0 +1,130 @@
+//
+// Created by Nancy on 2018/12/23.
+//
+
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/sem.h>
+#include <sys/shm.h>
+#include <sys/stat.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <cstring>
+#include <errno.h>
+#include <time.h>
+#define MAXSEM 5
+/*声明3个信号量id*/
+int fullid;
+int emptyid;
+int mutxid;
+
+/*有些系统没有定义该结构semun*/
+union semun {
+    int val;     //信号量的值
+    struct semid_ds *buf;
+    ushort *array;
+};
+
+int main() {
+    struct sembuf P, V;
+    union semun arg;
+    //声明共享主存
+    int *array;  //array用于维护共享数据  ？？
+    int *sum;    //保存当前求和结果
+    int *set;    //生产者写的次数
+    int *get;    //消费者读的次数
+    //将array sum get set 映射到共享主存
+    array = (int *) shmat(shmget(IPC_PRIVATE, sizeof(int) * MAXSEM, IPC_CREAT | 0666), 0, 0);
+    sum = (int *) shmat(shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666), 0, 0);
+    set = (int *) shmat(shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666), 0, 0);
+    get = (int *) shmat(shmget(IPC_PRIVATE, sizeof(int), IPC_CREAT | 0666), 0, 0);
+    *get = 0; //???
+    //创建信号量fullid emptyid 和 mutxid
+    fullid = semget(IPC_PRIVATE, 0666 | IPC_CREAT);
+    emptyid = semget(IPC_PRIVATE, 0666 | IPC_CREAT);
+    mutxid = semget(IPC_PRIVATE, 0666 | IPC_CREAT);
+
+    //为信号量赋值
+    arg.val = 0;
+    if (semctl(fullid, 0, SETVAL, arg) == -1)perror("semctl setval error");
+    arg.val = MAXSEM;
+    if (semctl(emptyid, 0, SETVAL, arg) == -1) perror("semctl setval error");
+    arg.val = 1;
+    if (semctl(mutxid, 0, SETVAL, arg) == -1) perror("semctl setval error");
+
+    //初始化P V操作
+    P.sem_num = 0;
+    P.sem_op = -1;  //消耗一个资源
+    P.sem_flg = SEM_UNDO;
+    V.sem_num = 0;
+    V.sem_op = 1;   //释放一个资源
+    V.sem_flg = SEM_UNDO;
+
+    //创建生产者进程
+    if (fork() == 0) {
+        int i = 0;
+        *set = 0;
+        while (i < 100) {
+            semop(emptyid, &P, 1);  //对信号量进行赋值操作
+            semop(mutxid, &P, 1);
+            array[(*set) % MAXSEM] = i + 1;  //对仓库写入
+            (*set)++;
+            semop(mutxid, &V, 1);
+            semop(fullid, &V, 1);
+            i++;
+        }
+        //休眠一段时间
+        sleep(3);
+        printf("生产者结束\n");
+        exit(0);
+    } else {
+        //创建消费者进程
+        if (fork() == 0) {
+            int i = 0;
+            *set = 0;
+            while (1) {
+                //对emptyid 和 mutxid 执行P操作
+                semop(emptyid, &P, 1);
+                semop(mutxid, &P, 1);
+                if (*get == 100)
+                    break;
+                *sum += array[(*get) % MAXSEM];  //?sum是什么
+                printf("The ComsumerA Get Number %d\n", array[(*get) % MAXSEM]);
+                (*get)++;
+                if (*get == 100) printf("The sum is %d \n", sum);
+                //对emptyid mutxid执行V操作
+                semop(mutxid, &V, 1);
+                semop(fullid, &V, 1);
+                sleep(1);
+            }
+            printf("消费者结束\n");
+            exit(0);
+        } else {
+            //创建消费者进程B
+            while (1) {
+                //对emptyid 和 mutxid 执行P操作
+                semop(emptyid, &P, 1);
+                semop(mutxid, &P, 1);
+                if (*get == 100)
+                    break;
+                *sum += array[(*get) % MAXSEM];  //?sum是什么
+                printf("The ComsumerB Get Number %d\n", array[(*get) % MAXSEM]);
+                (*get)++;
+                if (*get == 100) printf("The sum is %d \n", sum);
+                //对emptyid mutxid执行V操作
+                semop(mutxid, &V, 1);
+                semop(fullid, &V, 1);
+                sleep(1);
+            }
+            printf("消费者B结束\n");
+            exit(0);
+        }
+    }
+}
+
+
+
+
+
+}
+
