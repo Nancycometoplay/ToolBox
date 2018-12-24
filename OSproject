@@ -12,16 +12,16 @@
 #include <stdlib.h>
 #define MAXSEM 5
 /*声明3个信号量id*/
-int fullid;
-int emptyid;
-int mutxid;
-
+int fullid;   //可以使用的空缓冲区数
+int emptyid;  //缓冲区内可以使用的产品数
+int mutxid;   //互斥信号量
+  
 
 int main() {
     struct sembuf P, V;
     union semun arg;
     //声明共享主存
-    int *array;  //array用于维护共享数据  ？？
+    int *array;  //array用于维护共享数据（缓冲区）
     int *sum;    //保存当前求和结果
     int *set;    //生产者写的次数
     int *get;    //消费者读的次数
@@ -78,7 +78,7 @@ int main() {
                 semop(mutxid, &P, 1);
                 if (*get == 100)
                     break;
-                *sum += array[(*get) % MAXSEM];  //?sum是什么
+                *sum += array[(*get) % MAXSEM];  
                 printf("The ComsumerA Get Number %d\n", array[(*get) % MAXSEM]);
                 (*get)++;
                 if (*get == 100) printf("The sum is %d \n", *sum);
@@ -98,7 +98,7 @@ int main() {
                 semop(mutxid, &P, 1);
                 if (*get == 100)
                     break;
-                *sum += array[(*get) % MAXSEM];  //?sum是什么
+                *sum += array[(*get) % MAXSEM];  
                 printf("The ComsumerB Get Number %d\n", array[(*get) % MAXSEM]);
                 (*get)++;
                 if (*get == 100) printf("The sum is %d \n", *sum);
